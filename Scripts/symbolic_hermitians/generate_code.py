@@ -5,7 +5,7 @@ import argparse
 import os
 import sympy
 from sympy.codegen.ast import Assignment
-from HermitianUtils import HermitianMatrix
+from HermitianUtils import HermitianMatrix, ComplexMatrix, UnitMatrix
 import shutil
 
 parser = argparse.ArgumentParser(description="Generates code for calculating C = i * [A,B] for symbolic NxN Hermitian matrices A, B, C, using real-valued Real and Imaginary components.")
@@ -88,35 +88,65 @@ if __name__ == "__main__":
     #==================================#
     # FlavoredNeutrinoContainer.H_fill #
     #==================================#
-    vars = ["f","dfdt"]
     tails = ["","bar"]
     code = []
     for t in tails:
         code += ["N"+t]
-        for v in vars:
-            A = HermitianMatrix(args.N, v+"{}{}_{}"+t)
-            code += A.header()
-            
+        A = HermitianMatrix(args.N, "f0{}{}_{}"+t)
+        code += A.header()
+        A = HermitianMatrix(args.N, "f{}{}_{}"+t)
+        code += A.header()
+        A = ComplexMatrix(args.N, "S{}{}_{}"+t)
+        code += A.header()
+        A = ComplexMatrix(args.N, "dSdt{}{}_{}"+t)
+        code += A.header()
+
     code = [code[i]+"," for i in range(len(code))]
     write_code(code, os.path.join(args.emu_home, "Source/generated_files", "FlavoredNeutrinoContainer.H_fill"))
 
     #========================================================#
     # FlavoredNeutrinoContainerInit.H_particle_varnames_fill #
     #========================================================#
-    vars = ["f","dfdt"]
     tails = ["","bar"]
     code = []
     for t in tails:
         code += ["N"+t]
-        for v in vars:
-            A = HermitianMatrix(args.N, v+"{}{}_{}"+t)
-            code += A.header()
+        A = HermitianMatrix(args.N, "f0{}{}_{}"+t)
+        code += A.header()
+        A = HermitianMatrix(args.N, "f{}{}_{}"+t)
+        code += A.header()
+        A = ComplexMatrix(args.N, "S{}{}_{}"+t)
+        code += A.header()
+        A = ComplexMatrix(args.N, "dSdt{}{}_{}"+t)
+        code += A.header()
     code_string = 'attribute_names = {"time", "pupx", "pupy", "pupz", "pupt", '
     code = ['"{}"'.format(c) for c in code]
     code_string = code_string + ", ".join(code) + "};"
     code = [code_string]
     write_code(code, os.path.join(args.emu_home, "Source/generated_files", "FlavoredNeutrinoContainerInit.H_particle_varnames_fill"))
 
+    #======================================================#
+    # FlavoredNeutrinoContainerInit.H_initialize_S_F0_fill #
+    #======================================================#
+    tails = ["","bar"]
+    code = []
+    for t in tails:
+        # set F0 to F
+        F0 = HermitianMatrix(args.N, "p.rdata(PIdx::f0{}{}_{}"+t+")")
+        F = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")")
+        F0.H = F.H
+        lines = F0.code()
+        for l in lines:
+            code.append(l)
+            
+        # Set S to identity
+        S = ComplexMatrix(args.N, "p.rdata(PIdx::S{}{}_{}"+t+")")
+        S.H = UnitMatrix(args.N)
+        lines = S.code()
+        for l in lines:
+            code.append(l)
+    write_code(code, os.path.join(args.emu_home, "Source/generated_files", "FlavoredNeutrinoContainerInit.H_initialize_S_F0_fill"))
+    
     #===============#
     # Evolve.H_fill #
     #===============#
@@ -310,15 +340,16 @@ if __name__ == "__main__":
     code = []
     for t in tails:
         H = HermitianMatrix(args.N, "V{}{}_{}"+t)
-        F = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")")
-        dFdt = HermitianMatrix(args.N, "p.rdata(PIdx::dfdt{}{}_{}"+t+")")
+        S = ComplexMatrix(args.N, "p.rdata(PIdx::S{}{}_{}"+t+")")
+        dSdt = ComplexMatrix(args.N, "p.rdata(PIdx::dSdt{}{}_{}"+t+")")
     
         # Calculate C = i * [A,B]
         #Fnew.anticommutator(H,F).times(sympy.I * dt);
-        dFdt.H = ((H*F - F*H).times(-sympy.I/hbar)).H
+        # dFdt.H = ((H*F - F*H).times(-sympy.I/hbar)).H
+        dSdt.H = ((H*S).times(-sympy.I/hbar)).H
     
         # Get generated code for the components of C
-        code.append(dFdt.code())
+        code.append(dSdt.code())
     code = [line for sublist in code for line in sublist]
     write_code(code, os.path.join(args.emu_home, "Source/generated_files", "Evolve.cpp_dfdt_fill"))
 
@@ -326,35 +357,16 @@ if __name__ == "__main__":
     # flavor_evolve_K.H_fill #
     #========================#
     code = []
-    Fmag = sympy.symbols('Fmag',real=True)
-    Fmagnew = sympy.symbols('Fmagnew',real=True)
-    dFdtmag = sympy.symbols('dFdtmag',real=True)
-    dt_effective = sympy.symbols('dt_effective',real=True)
+    # calculate amplification factor alpha
+    dt = sympy.symbols('dt',real=True)
     for t in tails:
-        F = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")")
-        Fnew = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")")
-        dFdt = HermitianMatrix(args.N, "p.rdata(PIdx::dfdt{}{}_{}"+t+")")
-    
-        # calculate amplification factor alpha
-        dt = sympy.symbols('dt',real=True)
-        expr = F.SU_vector_magnitude()
-        code.append([sympy.cxxcode(Assignment(Fmag, sympy.simplify(expr)))])
-        expr = dFdt.SU_vector_magnitude()  
-        code.append([sympy.cxxcode(Assignment(dFdtmag, sympy.simplify(expr)))])
-        expr = Fmag/dFdtmag * sympy.tan(dFdtmag/Fmag*dt)
-        code.append([sympy.cxxcode(Assignment(dt_effective, sympy.simplify(expr)))])
-        
+        S = ComplexMatrix(args.N, "p.rdata(PIdx::S{}{}_{}"+t+")")
+        Snew = ComplexMatrix(args.N, "p.rdata(PIdx::S{}{}_{}"+t+")")
+        dSdt = ComplexMatrix(args.N, "p.rdata(PIdx::dSdt{}{}_{}"+t+")")
         
         # update Fnew
-        Fnew.H = (F + dFdt.times(dt_effective)).H
-        code.append(Fnew.code())
-    
-        # get new magnitude of flavor vector
-        code.append([sympy.cxxcode(Assignment(Fmagnew, sympy.simplify(F.SU_vector_magnitude())))])
-        
-        # normalize the flavor vector                                                                    
-        Fnew.H = (F.add_scalar(-1/args.N)).times(Fmag/Fmagnew).add_scalar(1/args.N).H                    
-        code.append(Fnew.code())      
+        Snew.H = (S + dSdt.times(dt)).H
+        code.append(Snew.code())
         
     code = [line for sublist in code for line in sublist]
     write_code(code, os.path.join(args.emu_home,"Source/generated_files","flavor_evolve_K.H_fill"))
@@ -363,14 +375,56 @@ if __name__ == "__main__":
     # FlavoredNeutrinoContainer.cpp_Renormalize_fill #
     #================================================#
     code = []
+    Fmag = sympy.symbols('Fmag',real=True)
+    Fmagnew = sympy.symbols('Fmagnew',real=True)
     for t in tails:
-        code.append("sumP = 0;")
-        fdlist = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")").header_diagonals()
-        flist = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")").header()
-        for fii in fdlist:
-            code.append("sumP += " + fii + ";")
-        for fii in flist:
-            code.append(fii + " /= sumP;")
+        # get old flavor vector length
+        F0 = HermitianMatrix(args.N, "p.rdata(PIdx::f0{}{}_{}"+t+")")
+        expr = F0.SU_vector_magnitude()
+        code.append(sympy.cxxcode(Assignment(Fmag, sympy.simplify(expr))))
+                
+        # apply S to F
+        F = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")")
+        S = ComplexMatrix(args.N, "p.rdata(PIdx::S{}{}_{}"+t+")")
+        F.H = (S*F0*S.dagger()).H
+        lines = F.code()
+        for l in lines:
+            code.append(l)
+
+        # reset trace of f
+        #code.append("sumP = 0;")
+        #fdlist = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")").header_diagonals()
+        #flist = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")").header()
+        #for fii in fdlist:
+        #    code.append("sumP += " + fii + ";")
+        #for fij in flist:
+        #    code.append(fij + " /= sumP;")
+
+        # get new flavor vector length
+        F = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")")
+        expr = F.SU_vector_magnitude()
+        code.append(sympy.cxxcode(Assignment(Fmagnew, sympy.simplify(expr))))
+            
+        # normalize the flavor vector                                                                    
+        #F.H = (F.add_scalar(-1/args.N)).times(Fmag/Fmagnew).add_scalar(1/args.N).H
+        #lines = F.code()
+        #for l in lines:
+        #    code.append(l)
+            
+        # set F0 to F
+        F = HermitianMatrix(args.N, "p.rdata(PIdx::f{}{}_{}"+t+")")
+        F0.H = F.H
+        lines = F0.code()
+        for l in lines:
+            code.append(l)
+        
+        # reset S to unity
+        S.H = UnitMatrix(args.N)
+        lines = S.code()
+        for l in lines:
+            code.append(l)
+            
+
     write_code(code, os.path.join(args.emu_home, "Source/generated_files", "FlavoredNeutrinoContainer.cpp_Renormalize_fill"))
     # Write code to output file, using a template if one is provided
     # write_code(code, "code.cpp", args.output_template)

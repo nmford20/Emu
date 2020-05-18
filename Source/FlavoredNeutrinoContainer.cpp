@@ -46,7 +46,7 @@ Renormalize()
         ParallelFor ( np,
 	  [=] (int i) {
 	  ParticleType& p = pstruct[i];
-	  double sumP;
+	  Real Fmag, Fmagnew, sumP;
 	  #include "generated_files/FlavoredNeutrinoContainer.cpp_Renormalize_fill"
 	  }
 	);

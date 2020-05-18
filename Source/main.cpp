@@ -64,6 +64,7 @@ void evolve_flavor(const TestParams& parms)
 
     FlavoredNeutrinoContainer neutrinos(geom, dm, ba);
     neutrinos.InitParticles(parms);
+    neutrinos.Renormalize();
 
     amrex::Print() << "Done. " << std::endl;
 

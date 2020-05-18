@@ -1,7 +1,13 @@
 import sympy
-from sympy.functions import conjugate
+from sympy.functions import conjugate, transpose
 from sympy.codegen.ast import Assignment
 import copy
+
+def UnitMatrix(size):
+    H = sympy.zeros(size, size)
+    for i in range(size):
+        H[i,i] = 1
+    return H
 
 class ComplexMatrix(object):
     # Stores a symbolic complex matrix by construction
@@ -86,6 +92,11 @@ class ComplexMatrix(object):
 
     def conjugate(self):
         self.H = Conjugate(self.H)
+        return self
+    
+    def dagger(self):
+        self.H = conjugate(self.H)
+        self.H = transpose(self.H)
         return self
 
     def times(self, x):
