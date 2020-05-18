@@ -3,8 +3,8 @@ from sympy.functions import conjugate
 from sympy.codegen.ast import Assignment
 import copy
 
-class HermitianMatrix(object):
-    # Stores a symbolic matrix Hermitian by construction
+class ComplexMatrix(object):
+    # Stores a symbolic complex matrix by construction
     # written in terms of real valued components.
 
     def __init__(self, size, entry_template = "H{}{}_{}"):        
@@ -26,6 +26,39 @@ class HermitianMatrix(object):
 
         self.construct()
     
+    def construct(self):
+        for i in range(self.size):
+            for j in range(self.size):
+                self.H[i,j] = sympy.symbols(self.entry_template.format(i,j,"Re"), real=True)
+                self.H[i,j] += sympy.I * sympy.symbols(self.entry_template.format(i,j,"Im"), real=True)
+
+    def expressions(self):
+        # The entry_template is a string of the form "...{}...{}...{}..."
+        # and must have three sets of braces "{}" where the two indices
+        # and the real/imaginary notations ("Re" or "Im") go.
+        # e.g. "f{}{}_{}" -> "f00_Re", "f01_Re", "f01_Im", etc.
+        #
+        # Returns a list of variable assignment expressions
+        # for real values matching entry_template that compose
+        # the elements of M.
+
+        expressions = []
+        for i in range(self.size):
+            for j in range(self.size):
+                assign_to = sympy.symbols(self.entry_template.format(i,j,"Re"), real=True)
+                expressions.append(Assignment(assign_to, sympy.re(self.H[i,j])))
+                assign_to = sympy.symbols(self.entry_template.format(i,j,"Im"), real=True)
+                expressions.append(Assignment(assign_to, sympy.im(self.H[i,j])))
+        return expressions
+
+    def declarations(self):
+        declarations = []
+        for i in range(self.size):
+            for j in range(self.size):
+                declarations.append(sympy.re(self.H[i,j]))
+                declarations.append(sympy.im(self.H[i,j]))
+        return declarations
+
     def __mul__(self, other):
         result = copy.deepcopy(other)
         result.H = self.H * other.H
@@ -41,20 +74,12 @@ class HermitianMatrix(object):
         result.H = self.H - other.H
         return result
 
-    def construct(self):
-        for i in range(self.size):
-            for j in range(i, self.size):
-                self.H[i,j] = sympy.symbols(self.entry_template.format(i,j,"Re"), real=True)
-                if j > i:
-                    self.H[i,j] += sympy.I * sympy.symbols(self.entry_template.format(i,j,"Im"), real=True)
-                    self.H[j,i] = conjugate(self.H[i,j])
-                    
-    def anticommutator(self, HermitianA, HermitianB):
-        # Given two HermitianMatrix objects HermitianA, HermitianB
+    def anticommutator(self, ComplexMatrixA, ComplexMatrixB):
+        # Given two ComplexMatrix objects HermitianA, HermitianB
         # set self elements so: self.H = [A,B] = (A*B - B*A)
         
-        A = HermitianA.H
-        B = HermitianB.H
+        A = ComplexMatrixA.H
+        B = ComplexMatrixB.H
         
         self.H = A * B - B * A
         return self
@@ -62,7 +87,50 @@ class HermitianMatrix(object):
     def conjugate(self):
         self.H = Conjugate(self.H)
         return self
-    
+
+    def times(self, x):
+        # Apply self.H = self.H * x
+        # where x is a Sympy expression
+
+        self.H = self.H * x
+        return self
+
+    def plus(self, x):
+        # Apply self.H = self.H + x
+        # where x is a Sympy expression
+
+        self.H = self.H + x
+        return self
+
+    def add_scalar(self,x):
+        for i in range(self.size):
+            self.H[i,i] = self.H[i,i] + x
+        return self
+
+    def code(self):
+        # Returns a list of strings of C++11 code with expressions for
+        # each real value that constitutes the Hermitian matrix
+
+        lines = [sympy.cxxcode(sympy.simplify(e)) for e in self.expressions()]
+        return lines
+
+    def header(self):
+        # Returns a list of strings of C++11 code with expressions for
+        # each real value that constitutes the Hermitian matrix
+
+        lines = [sympy.cxxcode(e) for e in self.declarations()]
+        return lines
+
+    def header_diagonals(self):
+        lines = [sympy.cxxcode(sympy.re(self.H[i,i])) for i in range(self.size)]
+        return lines
+
+
+
+class HermitianMatrix(ComplexMatrix):
+    # Stores a symbolic matrix Hermitian by construction
+    # written in terms of real valued components.
+
     # return the length of the SU(n) vector
     def SU_vector_magnitude(self):
         # first get the sum of the square of the off-diagonal elements
@@ -82,26 +150,15 @@ class HermitianMatrix(object):
             mag2 += (basis_coefficient/2.)**2
 
         return sympy.sqrt(mag2)
-
-    def times(self, x):
-        # Apply self.H = self.H * x
-        # where x is a Sympy expression
         
-        self.H = self.H * x
-        return self
-        
-    def plus(self, x):
-        # Apply self.H = self.H + x
-        # where x is a Sympy expression
-        
-        self.H = self.H + x
-        return self
-
-    def add_scalar(self,x):
+    def construct(self):
         for i in range(self.size):
-            self.H[i,i] = self.H[i,i] + x
-        return self
-        
+            for j in range(i, self.size):
+                self.H[i,j] = sympy.symbols(self.entry_template.format(i,j,"Re"), real=True)
+                if j > i:
+                    self.H[i,j] += sympy.I * sympy.symbols(self.entry_template.format(i,j,"Im"), real=True)
+                    self.H[j,i] = conjugate(self.H[i,j])
+
     def expressions(self):
         # The entry_template is a string of the form "...{}...{}...{}..."
         # and must have three sets of braces "{}" where the two indices
@@ -130,22 +187,3 @@ class HermitianMatrix(object):
                 if j > i:
                     declarations.append(sympy.im(self.H[i,j]))
         return declarations
-        
-
-    def code(self):
-        # Returns a list of strings of C++11 code with expressions for 
-        # each real value that constitutes the Hermitian matrix
-
-        lines = [sympy.cxxcode(sympy.simplify(e)) for e in self.expressions()]
-        return lines
-
-    def header(self):
-        # Returns a list of strings of C++11 code with expressions for 
-        # each real value that constitutes the Hermitian matrix
-
-        lines = [sympy.cxxcode(e) for e in self.declarations()]
-        return lines
-        
-    def header_diagonals(self):
-        lines = [sympy.cxxcode(sympy.re(self.H[i,i])) for i in range(self.size)]
-        return lines
