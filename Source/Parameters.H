@@ -26,6 +26,8 @@ struct TestParams : public amrex::Gpu::Managed
     std::string restart_dir;
     Real maxError;
 
+    int gpu_deposition_registers;
+
     // neutrino physics parameters. See first column of table 14.7 in http://pdg.lbl.gov/2019/reviews/rpp2019-rev-neutrino-mixing.pdf
     Real mass1, mass2, mass3; // neutrino masses in grams
     Real theta12, theta13, theta23; // neutrino mixing angles in radians
@@ -63,6 +65,9 @@ struct TestParams : public amrex::Gpu::Managed
         pp.get("do_restart", do_restart);
         pp.get("restart_dir", restart_dir);
         pp.get("maxError", maxError);
+
+        gpu_deposition_registers = 1;
+        pp.query("gpu_deposition_registers", gpu_deposition_registers);
 
         // neutrino physics parameters for 2-flavor
         pp.get("mass1_eV", mass1);

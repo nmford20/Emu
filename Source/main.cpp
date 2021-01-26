@@ -97,7 +97,7 @@ void evolve_flavor(const TestParams* parms)
     neutrinos_new.copyParticles(neutrinos_old, true);
 
     // Deposit particles to grid
-    deposit_to_mesh(neutrinos_old, state, geom);
+    deposit_to_mesh(neutrinos_old, state, geom, parms);
 
     // Write plotfile after initialization
     if (not parms->do_restart) {
@@ -115,7 +115,7 @@ void evolve_flavor(const TestParams* parms)
         /* Evaluate the neutrino distribution matrix RHS */
 
         // Step 1: Deposit Particle Data to Mesh & fill domain boundaries/ghost cells
-        deposit_to_mesh(neutrinos, state, geom);
+        deposit_to_mesh(neutrinos, state, geom, parms);
         state.FillBoundary(geom.periodicity());
 
         // Step 2: Copy Particles and their F from neutrino state to neutrino RHS ParticleContainer

@@ -58,7 +58,7 @@ Real compute_dt(const Geometry& geom, const Real cfl_factor, const MultiFab& sta
     return dt;
 }
 
-void deposit_to_mesh(const FlavoredNeutrinoContainer& neutrinos, MultiFab& state, const Geometry& geom)
+void deposit_to_mesh(const FlavoredNeutrinoContainer& neutrinos, MultiFab& state, const Geometry& geom, const TestParams* parms)
 {
     const auto plo = geom.ProbLoArray();
     const auto dxi = geom.InvCellSizeArray();
@@ -73,7 +73,7 @@ void deposit_to_mesh(const FlavoredNeutrinoContainer& neutrinos, MultiFab& state
     const int shape_factor_order_y = geom.Domain().length(1) > 1 ? SHAPE_FACTOR_ORDER : 0;
     const int shape_factor_order_z = geom.Domain().length(2) > 1 ? SHAPE_FACTOR_ORDER : 0;
 
-    amrex::ParticleToMesh(neutrinos, deposit_state, 0,
+    amrex::ParticleToMesh(neutrinos, deposit_state, 0, parms->gpu_deposition_registers,
     [=] AMREX_GPU_DEVICE (const FlavoredNeutrinoContainer::ParticleType& p,
                           amrex::Array4<amrex::Real> const& sarr)
     {
